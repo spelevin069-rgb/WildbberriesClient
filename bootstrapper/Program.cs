@@ -4,7 +4,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 
 // Set this to the public GitHub repository that publishes the release assets.
-const string GitHubRepository = "YOUR_GITHUB_USERNAME/WildbberriesClient";
+const string GitHubRepository = "spelevin069-rgb/WildbberriesClient";
 const string BundleAssetName = "WildbberriesClient-Bundle.zip";
 
 Console.Title = "WildbberriesClient Installer";
@@ -35,9 +35,9 @@ try
     Console.WriteLine("Checking the latest GitHub release...");
     string api = $"https://api.github.com/repos/{GitHubRepository}/releases/latest";
     using JsonDocument release = JsonDocument.Parse(await http.GetStringAsync(api));
-    var assets = release.RootElement.GetProperty("assets").EnumerateArray();
+    var releaseAssets = release.RootElement.GetProperty("assets").EnumerateArray();
     string? downloadUrl = null;
-    foreach (var asset in assets)
+    foreach (var asset in releaseAssets)
     {
         if (asset.GetProperty("name").GetString() == BundleAssetName)
         {
