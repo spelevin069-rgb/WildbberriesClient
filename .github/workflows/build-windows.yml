@@ -1,0 +1,87 @@
+name: Build new WildbberriesClient Refract launcher
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [refract-launcher]
+    paths:
+      - 'source.zip'
+      - '.github/workflows/build-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout launcher build branch
+        uses: actions/checkout@v4
+
+      - name: Check source archive
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'source.zip')) {
+            throw 'Upload the prepared launcher source archive to this branch as source.zip.'
+          }
+
+      - name: Extract launcher source
+        shell: pwsh
+        run: |
+          Expand-Archive -LiteralPath 'source.zip' -DestinationPath 'source' -Force
+          $project = Get-ChildItem 'source' -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'pnpm-workspace.yaml') } | Select-Object -First 1
+          if (!$project) { throw 'Could not find the launcher project in source.zip.' }
+          "LAUNCHER_SOURCE=$($project.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: source/Refract_MC-main/pnpm-lock.yaml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          Set-Location $env:LAUNCHER_SOURCE
+          pnpm install --frozen-lockfile
+
+      - name: Build Windows launcher
+        shell: pwsh
+        run: |
+          Set-Location $env:LAUNCHER_SOURCE
+          pnpm build
+
+      - name: Stage EXE files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = Join-Path $env:GITHUB_WORKSPACE 'release-windows'
+          New-Item -ItemType Directory -Force -Path $release | Out-Null
+          $app = Join-Path $env:LAUNCHER_SOURCE 'apps/tauri/src-tauri/target/release/wildbberriesclient-launcher.exe'
+          if (!(Test-Path $app)) { throw "EXE not found: $app" }
+          Copy-Item $app (Join-Path $release 'WildbberriesClient.exe')
+          $nsis = Join-Path $env:LAUNCHER_SOURCE 'apps/tauri/src-tauri/target/release/bundle/nsis'
+          $installer = Get-ChildItem $nsis -Filter '*.exe' -File | Select-Object -First 1
+          if (!$installer) { throw 'NSIS installer was not produced.' }
+          Copy-Item $installer.FullName (Join-Path $release 'WildbberriesClient-Setup.exe')
+
+      - name: Upload EXE files
+        uses: actions/upload-artifact@v4
+        with:
+          name: WildbberriesClient-Windows-x64
+          path: release-windows/*.exe
+          if-no-files-found: error
+          retention-days: 14
